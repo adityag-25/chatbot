@@ -1,7 +1,42 @@
 name: customer-support-env
-version: 1.0
+version: 2.0.0
+
+description: >
+  Autonomous Customer Support Decision Agent simulation environment
+  for training and evaluating multi-step, emotion-aware support agents.
 
 endpoints:
-  reset: /reset
-  step: /step
-  state: /state
+  reset:      POST /reset
+  step:       POST /step
+  state:      GET  /state
+  tasks:      GET  /tasks
+  agent_step: POST /agent/step
+  benchmark:  POST /benchmark
+
+grader:
+  intent:    0.25   # Intent classification correctness
+  decision:  0.35   # Decision accuracy (resolve/refund/escalate/ask_info)
+  quality:   0.25   # Response quality — keyword overlap + semantic heuristic
+  emotion:   0.10   # Emotion-appropriate response (apology for angry, clarity for confused)
+  efficiency: 0.05  # Fewer turns = higher score
+
+max_turns: 3
+
+tools:
+  - process_refund
+  - escalate_ticket
+  - order_lookup
+
+emotions:
+  - angry
+  - confused
+  - neutral
+
+decisions:
+  - resolve
+  - refund
+  - escalate
+  - ask_info
+
+port: 7860
+ui: ui/index.html

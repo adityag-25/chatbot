@@ -1,4 +1,6 @@
 fastapi
-uvicorn
-pydantic
-openai
+uvicorn[standard]
+pydantic>=2.0
+openai>=1.0
+python-multipart
+aiofiles
