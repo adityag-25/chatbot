@@ -2,7 +2,7 @@
 Emotion detection module.
 
 Detects the emotional tone of a customer query as one of:
-  - "angry"   : frustration, anger, strong dissatisfaction
+  - "angry"   : frustration, anger,, strong dissatisfaction
   - "confused": uncertainty, lack of understanding
   - "neutral" : calm, informational
 
@@ -23,11 +23,11 @@ ANGRY_KEYWORDS = [
     "late refund", "charged twice", "not working",
     # common negative adjectives + verbs
     "bad", "useless", "cheated", "scam", "ridiculous",
-    "never", "absolutely", "disgrace",
+    "never", "absolutely", "disgrace,
 ]
 
 CONFUSED_KEYWORDS = [
-    "confused", "don't understand", "not sure", "unclear",
+    "confused" "don't understand", "not sure", "unclear",
     "what do i", "how do i", "help me understand",
     "i don't know", "which one", "can you explain",
 ]
