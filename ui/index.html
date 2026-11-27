@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OpenEnv — Customer Support Decision Agent</title>
+<style>
+/* =========================================================
+   DESIGN TOKENS
+========================================================= */
+:root {
+  --bg:         #0d1117;
+  --surface:    #161b22;
+  --surface2:   #1f2937;
+  --border:     #30363d;
+  --accent:     #58a6ff;
+  --accent2:    #3fb950;
+  --warn:       #d29922;
+  --danger:     #f85149;
+  --text:       #e6edf3;
+  --muted:      #8b949e;
+  --radius:     10px;
+  --font:       'Inter', 'Segoe UI', system-ui, sans-serif;
+  --mono:       'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* =========================================================
+   RESET & BASE
+========================================================= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.6; }
+a { color: var(--accent); }
+button { cursor: pointer; font-family: var(--font); }
+input, select, textarea { font-family: var(--font); color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; outline: none; transition: border-color .2s; width: 100%; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+select option { background: var(--surface2); }
+textarea { resize: vertical; min-height: 80px; }
+pre { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+code { font-family: var(--mono); }
+
+/* =========================================================
+   LAYOUT
+========================================================= */
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* Header */
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+header .logo { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+header .logo span { color: var(--text); }
+header .tagline { color: var(--muted); font-size: 12px; }
+header .spacer { flex: 1; }
+.server-status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.status-dot.ok { background: var(--accent2); }
+.status-dot.err { background: var(--danger); }
+
+/* Tab nav */
+nav.tabs {
+  display: flex; gap: 2px;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+nav.tabs .tab-btn {
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: all .2s;
+}
+nav.tabs .tab-btn:hover { color: var(--text); }
+nav.tabs .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Tab panels */
+.tab-panel { display: none; flex: 1; }
+.tab-panel.active { display: flex; }
+
+/* Main content area */
+.content { flex: 1; padding: 24px; overflow-y: auto; }
+
+/* =========================================================
+   TWO-COLUMN SANDBOX LAYOUT
+========================================================= */
+#sandbox-panel.active { flex-direction: row; gap: 0; overflow: hidden; }
+.sandbox-left {
+  width: 400px; min-width: 320px; max-width: 480px;
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.sandbox-right {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* =========================================================
+   CARDS & SECTIONS
+========================================================= */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 10px;
+}
+.section-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* =========================================================
+   SCENARIO HEADER
+========================================================= */
+.scenario-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.scenario-query {
+  font-size: 15px; font-weight: 600; color: var(--text);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.meta-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* Badges */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.badge-angry    { background: rgba(248,81,73,.15); color: var(--danger); border: 1px solid rgba(248,81,73,.4); }
+.badge-confused { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid rgba(210,153,34,.4); }
+.badge-neutral  { background: rgba(88,166,255,.12); color: var(--accent); border: 1px solid rgba(88,166,255,.3); }
+.badge-info     { background: rgba(63,185,80,.12); color: var(--accent2); border: 1px solid rgba(63,185,80,.3); }
+.badge-muted    { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+/* =========================================================
+   RESET BAR
+========================================================= */
+.reset-bar {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.reset-bar select { flex: 1; min-width: 160px; }
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px;
+  font-size: 13px; font-weight: 500; border: none;
+  transition: all .15s;
+}
+.btn-primary   { background: var(--accent); color: #0d1117; }
+.btn-primary:hover { background: #79c0ff; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.btn-success   { background: rgba(63,185,80,.2); color: var(--accent2); border: 1px solid rgba(63,185,80,.4); }
+.btn-success:hover { background: rgba(63,185,80,.35); }
+.btn-danger    { background: rgba(248,81,73,.15); color: var(--danger); border: 1px solid rgba(248,81,73,.4); }
+.btn-danger:hover { background: rgba(248,81,73,.3); }
+.btn:disabled  { opacity: .45; cursor: not-allowed; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-icon { width: 32px; height: 32px; padding: 0; justify-content: center; }
+
+/* =========================================================
+   CHAT INTERFACE
+========================================================= */
+.chat-area {
+  flex: 1; overflow-y: auto;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.chat-bubble {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  line-height: 1.5;
+  animation: fadeIn .2s ease;
+}
+.chat-bubble.user {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px 12px 12px 2px;
+  align-self: flex-start;
+}
+.chat-bubble.agent {
+  background: rgba(88,166,255,.1);
+  border: 1px solid rgba(88,166,255,.25);
+  border-radius: 12px 12px 2px 12px;
+  align-self: flex-end;
+}
+.bubble-role {
+  font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted); margin-bottom: 3px;
+}
+.tool-log {
+  align-self: stretch;
+  background: rgba(63,185,80,.07);
+  border: 1px solid rgba(63,185,80,.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent2);
+  animation: fadeIn .2s ease;
+}
+.tool-log .tool-label { font-weight: 700; margin-bottom: 2px; }
+
+@keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+/* =========================================================
+   ACTION PANEL
+========================================================= */
+.action-panel {
+  border-top: 1px solid var(--border);
+  padding: 16px;
+  background: var(--surface);
+}
+.action-tabs {
+  display: flex; gap: 4px; margin-bottom: 12px;
+}
+.action-tab {
+  padding: 5px 14px; border-radius: 6px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--muted);
+  transition: all .15s;
+}
+.action-tab.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+.action-form { display: flex; flex-direction: column; gap: 8px; }
+.form-row { display: flex; gap: 8px; }
+.form-row > * { flex: 1; }
+.form-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; font-weight: 500; }
+
+/* =========================================================
+   REWARD PANEL
+========================================================= */
+.reward-big {
+  font-size: 48px; font-weight: 700; color: var(--accent);
+  text-align: center; letter-spacing: -2px;
+  margin: 8px 0 4px;
+}
+.reward-label { text-align: center; font-size: 11px; color: var(--muted); margin-bottom: 16px; }
+.reward-breakdown { display: flex; flex-direction: column; gap: 10px; }
+.rw-row { display: flex; align-items: center; gap: 10px; }
+.rw-name { width: 130px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.rw-bar-bg { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+.rw-bar-fill { height: 100%; border-radius: 4px; transition: width .4s ease; }
+.rw-score { width: 42px; text-align: right; font-size: 12px; font-family: var(--mono); color: var(--text); }
+
+/* Bar colors */
+.rw-intent    { background: #58a6ff; }
+.rw-decision  { background: #3fb950; }
+.rw-quality   { background: #d2a8ff; }
+.rw-emotion   { background: #ffa657; }
+.rw-efficiency{ background: #39d353; }
+
+/* Inspector tabs */
+.inspector-tabs { display: flex; gap: 2px; margin-bottom: 12px; }
+.inspector-tab {
+  padding: 4px 12px; border-radius: 4px;
+  font-size: 11px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); transition: all .15s;
+}
+.inspector-tab.active { background: var(--surface2); color: var(--text); }
+.inspector-box {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px;
+  max-height: 280px; overflow-y: auto;
+  font-family: var(--mono); font-size: 11px; color: #79c0ff;
+  line-height: 1.6;
+}
+
+/* =========================================================
+   BENCHMARK TAB
+========================================================= */
+#benchmark-panel.active { flex-direction: column; overflow: hidden; }
+.benchmark-top {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;
+}
+.stat-cards { display: flex; gap: 12px; flex-wrap: wrap; padding: 16px 24px 0; }
+.stat-card {
+  flex: 1; min-width: 140px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px;
+}
+.stat-num { font-size: 28px; font-weight: 700; color: var(--accent); letter-spacing: -1px; }
+.stat-label { font-size: 11px; color: var(--muted); }
+.table-wrap { flex: 1; overflow: auto; padding: 16px 24px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  text-align: left; padding: 8px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  color: var(--muted); font-weight: 600;
+  position: sticky; top: 0;
+  font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+}
+tbody tr { border-bottom: 1px solid rgba(48,54,61,.5); transition: background .1s; }
+tbody tr:hover { background: rgba(255,255,255,.025); }
+tbody td { padding: 8px 12px; color: var(--text); vertical-align: middle; }
+.score-pill {
+  display: inline-block; padding: 2px 8px;
+  border-radius: 4px; font-weight: 600; font-family: var(--mono);
+}
+.score-high  { background: rgba(63,185,80,.2);  color: var(--accent2); }
+.score-mid   { background: rgba(210,153,34,.2); color: var(--warn); }
+.score-low   { background: rgba(248,81,73,.2);  color: var(--danger); }
+.filter-row { display: flex; gap: 8px; align-items: center; padding: 0 24px 12px; }
+.filter-row input { max-width: 240px; }
+
+/* =========================================================
+   PROGRESS RING (benchmark)
+========================================================= */
+.spinner {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin .6s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* =========================================================
+   TOAST
+========================================================= */
+#toast-container {
+  position: fixed; bottom: 24px; right: 24px;
+  display: flex; flex-direction: column; gap: 8px; z-index: 9999;
+}
+.toast {
+  padding: 10px 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  background: var(--surface2); border: 1px solid var(--border);
+  animation: slideIn .2s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+.toast.ok  { border-color: var(--accent2); color: var(--accent2); }
+.toast.err { border-color: var(--danger);  color: var(--danger); }
+.toast.info{ border-color: var(--accent);  color: var(--accent); }
+@keyframes slideIn { from { opacity:0; transform:translateX(16px); } to { opacity:1; transform:translateX(0); } }
+
+/* =========================================================
+   EMPTY STATE
+========================================================= */
+.empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--muted); gap: 8px;
+  padding: 40px;
+}
+.empty-icon { font-size: 36px; opacity: .5; }
+.empty-text { font-size: 13px; text-align: center; }
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+@media (max-width: 860px) {
+  #sandbox-panel.active { flex-direction: column; }
+  .sandbox-left { width: 100%; max-width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ============================================================
+     HEADER
+============================================================ -->
+<header>
+  <div class="logo">Open<span>Env</span></div>
+  <div class="tagline">Autonomous Customer Support Decision Agent</div>
+  <div class="spacer"></div>
+  <div class="server-status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text" style="color:var(--muted)">Connecting…</span>
+  </div>
+</header>
+
+<!-- ============================================================
+     TABS
+============================================================ -->
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="sandbox">🧪 Sandbox</button>
+  <button class="tab-btn" data-tab="reward">📊 Reward &amp; Eval</button>
+  <button class="tab-btn" data-tab="benchmark">🏁 Benchmark</button>
+</nav>
+
+<!-- ============================================================
+     TOAST CONTAINER
+============================================================ -->
+<div id="toast-container"></div>
+
+<!-- ===========================================================
+     TAB 1: SANDBOX
+=========================================================== -->
+<div id="sandbox-panel" class="tab-panel active">
+
+  <!-- LEFT COLUMN: controls -->
+  <div class="sandbox-left">
+
+    <!-- Reset bar -->
+    <div class="reset-bar">
+      <select id="task-select">
+        <option value="">🎲 Random Task</option>
+      </select>
+      <button class="btn btn-primary" id="btn-reset" onclick="doReset()">⟳ Reset</button>
+    </div>
+
+    <!-- Scenario info -->
+    <div class="scenario-header" id="scenario-header">
+      <div class="scenario-query" id="query-text" style="color:var(--muted);font-weight:400;font-size:13px">
+        Press Reset to start a new episode.
+      </div>
+      <div class="meta-row" id="meta-row" style="margin-top:6px"></div>
+    </div>
+
+    <!-- Reward & turn info (small) -->
+    <div class="section-scroll" style="flex:none;padding:12px 16px;">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Episode State</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div>
+            <div class="form-label">Turn</div>
+            <div id="ep-turn" style="font-size:20px;font-weight:700;color:var(--accent)">—</div>
+          </div>
+          <div>
+            <div class="form-label">Last Reward</div>
+            <div id="ep-reward" style="font-size:20px;font-weight:700;color:var(--accent2)">—</div>
+          </div>
+          <div>
+            <div class="form-label">Status</div>
+            <div id="ep-status" style="font-size:13px;padding-top:4px">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tool log -->
+    <div class="section-scroll" style="flex:1">
+      <div class="card-title">🔧 Tool Execution Log</div>
+      <div id="tool-log-container" style="display:flex;flex-direction:column;gap:8px">
+        <div style="color:var(--muted);font-size:12px">No tools called yet.</div>
+      </div>
+    </div>
+
+    <!-- Action panel -->
+    <div class="action-panel">
+      <div class="action-tabs">
+        <button class="action-tab active" data-atab="manual">Manual</button>
+        <button class="action-tab" data-atab="auto">Auto-Step</button>
+      </div>
+
+      <!-- Manual form -->
+      <div id="manual-form" class="action-form">
+        <div class="form-row">
+          <div>
+            <div class="form-label">Intent</div>
+            <select id="sel-intent">
+              <option value="refund_request">refund_request</option>
+              <option value="complaint">complaint</option>
+              <option value="info_request" selected>info_request</option>
+              <option value="track_order">track_order</option>
+              <option value="modify_order">modify_order</option>
+              <option value="cancel_request">cancel_request</option>
+              <option value="payment_issue">payment_issue</option>
+              <option value="technical_issue">technical_issue</option>
+              <option value="return_request">return_request</option>
+              <option value="exchange_request">exchange_request</option>
+              <option value="refund_issue">refund_issue</option>
+              <option value="request">request</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label">Decision</div>
+            <select id="sel-decision">
+              <option value="resolve" selected>resolve</option>
+              <option value="refund">refund</option>
+              <option value="escalate">escalate</option>
+              <option value="ask_info">ask_info</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <div class="form-label">Response</div>
+          <textarea id="txt-response" rows="3" placeholder="Type your agent response here…"></textarea>
+        </div>
+        <button class="btn btn-primary" id="btn-step-manual" onclick="doStep('manual')" disabled>
+          ▶ Submit Action
+        </button>
+      </div>
+
+      <!-- Auto form -->
+      <div id="auto-form" style="display:none">
+        <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+          Triggers the heuristic agent (or OpenAI if <code>OPENAI_API_KEY</code> is set on the server).
+        </p>
+        <button class="btn btn-success" style="width:100%" id="btn-step-auto" onclick="doStep('auto')" disabled>
+          ⚡ Auto-Step Agent
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN: chat -->
+  <div class="sandbox-right">
+    <div class="chat-area" id="chat-area">
+      <div class="empty-state">
+        <div class="empty-icon">💬</div>
+        <div class="empty-text">Reset the environment to start a conversation.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /sandbox-panel -->
+
+<!-- ===========================================================
+     TAB 2: REWARD & EVAL
+=========================================================== -->
+<div id="reward-panel" class="tab-panel">
+  <div class="content" style="max-width:720px;margin:0 auto">
+
+    <!-- Reward display -->
+    <div class="card">
+      <div class="card-title">Step Reward</div>
+      <div class="reward-big" id="reward-display">—</div>
+      <div class="reward-label">Composite Score (0.0 – 1.0)</div>
+
+      <div class="reward-breakdown" id="reward-breakdown">
+        <div style="color:var(--muted);font-size:12px;text-align:center">
+          Complete a step in the Sandbox to see the breakdown.
+        </div>
+      </div>
+    </div>
+
+    <!-- Inspector -->
+    <div class="card">
+      <div class="card-title">Raw JSON Inspector</div>
+      <div class="inspector-tabs">
+        <button class="inspector-tab active" data-itab="observation">Observation</button>
+        <button class="inspector-tab" data-itab="stepresult">StepResult</button>
+        <button class="inspector-tab" data-itab="state">openenv.yaml</button>
+      </div>
+      <div class="inspector-box" id="inspector-box">
+        <span style="color:var(--muted)">No data yet.</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===========================================================
+     TAB 3: BENCHMARK
+=========================================================== -->
+<div id="benchmark-panel" class="tab-panel">
+
+  <div class="benchmark-top">
+    <div>
+      <div class="form-label">Max Tasks</div>
+      <input type="number" id="bench-limit" value="30" min="1" max="30" style="width:90px" />
+    </div>
+    <div>
+      <div class="form-label">Filter (emotion)</div>
+      <select id="bench-filter-emotion" style="width:130px">
+        <option value="">All</option>
+        <option value="angry">Angry</option>
+        <option value="confused">Confused</option>
+        <option value="neutral">Neutral</option>
+      </select>
+    </div>
+    <div style="align-self:flex-end">
+      <button class="btn btn-primary" id="btn-benchmark" onclick="doBenchmark()">
+        🏁 Run Evaluation Suite
+      </button>
+    </div>
+    <div id="bench-spinner" style="display:none;align-self:flex-end;padding-bottom:8px">
+      <span class="spinner"></span> <span style="color:var(--muted);font-size:12px">Running…</span>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="stat-cards" id="bench-stats" style="display:none">
+    <div class="stat-card">
+      <div class="stat-num" id="stat-avg">—</div>
+      <div class="stat-label">Average Score</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="stat-pass">—</div>
+      <div class="stat-label">Pass Rate (≥0.5)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="stat-total">—</div>
+      <div class="stat-label">Tasks Evaluated</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="stat-max">—</div>
+      <div class="stat-label">Best Score</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="stat-min">—</div>
+      <div class="stat-label">Worst Score</div>
+    </div>
+  </div>
+
+  <!-- Filter row -->
+  <div class="filter-row" id="bench-filter-row" style="display:none">
+    <input type="text" id="bench-search" placeholder="🔍 Search query…" oninput="filterTable()" />
+    <span style="color:var(--muted);font-size:12px" id="bench-count"></span>
+  </div>
+
+  <!-- Results table -->
+  <div class="table-wrap" id="bench-table-wrap" style="display:none">
+    <table id="bench-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Query</th>
+          <th>Emotion</th>
+          <th>Intent</th>
+          <th>Decision</th>
+          <th>Tool</th>
+          <th>Turns</th>
+          <th>Score</th>
+          <th>Pass</th>
+        </tr>
+      </thead>
+      <tbody id="bench-tbody"></tbody>
+    </table>
+  </div>
+
+  <div id="bench-empty" class="empty-state">
+    <div class="empty-icon">🏁</div>
+    <div class="empty-text">Click "Run Evaluation Suite" to benchmark the agent across all tasks.</div>
+  </div>
+
+</div><!-- /benchmark-panel -->
+
+</div><!-- /app -->
+
+<!-- ===========================================================
+     JAVASCRIPT
+=========================================================== -->
+<script>
+const API = 'http://localhost:7860';
+
+// ----------------------------------------------------------------
+// App state
+// ----------------------------------------------------------------
+let appState = {
+  episodeActive: false,
+  done: false,
+  currentObs: null,
+  lastResult: null,
+  inspectorTab: 'observation',
+  tasks: [],
+  benchResults: [],
+};
+
+// ----------------------------------------------------------------
+// Server health check
+// ----------------------------------------------------------------
+async function checkServer() {
+  try {
+    const r = await fetch(`${API}/`);
+    if (r.ok) {
+      document.getElementById('status-dot').classList.add('ok');
+      document.getElementById('status-text').textContent = 'API Connected';
+      document.getElementById('status-text').style.color = 'var(--accent2)';
+      loadTasks();
+    } else { throw new Error(); }
+  } catch {
+    document.getElementById('status-dot').classList.add('err');
+    document.getElementById('status-text').textContent = 'API Offline';
+    document.getElementById('status-text').style.color = 'var(--danger)';
+    setTimeout(checkServer, 3000);
+  }
+}
+
+// ----------------------------------------------------------------
+// Load tasks into the selector
+// ----------------------------------------------------------------
+async function loadTasks() {
+  try {
+    const r = await fetch(`${API}/tasks`);
+    const data = await r.json();
+    appState.tasks = data.tasks;
+    const sel = document.getElementById('task-select');
+    data.tasks.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.index;
+      opt.textContent = `#${t.index} — ${t.query.slice(0, 45)}`;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn('Failed to load tasks', e);
+  }
+}
+
+// ----------------------------------------------------------------
+// RESET
+// ----------------------------------------------------------------
+async function doReset() {
+  const sel = document.getElementById('task-select');
+  const taskIndex = sel.value !== '' ? parseInt(sel.value) : null;
+  const btn = document.getElementById('btn-reset');
+  btn.disabled = true;
+
+  try {
+    const body = taskIndex !== null ? { task_index: taskIndex } : {};
+    const r = await fetch(`${API}/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const obs = await r.json();
+    appState.currentObs = obs;
+    appState.episodeActive = true;
+    appState.done = false;
+    appState.lastResult = null;
+
+    renderScenarioHeader(obs);
+    renderChat(obs.conversation, []);
+    clearToolLog();
+    updateEpisodeState(null, false);
+    setStepButtons(true);
+    clearReward();
+    toast('Episode reset!', 'ok');
+  } catch (e) {
+    toast(`Reset failed: ${e.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ----------------------------------------------------------------
+// STEP
+// ----------------------------------------------------------------
+async function doStep(mode) {
+  if (!appState.episodeActive || appState.done) {
+    toast('Episode done or not started. Press Reset first.', 'info');
+    return;
+  }
+
+  const manualBtn = document.getElementById('btn-step-manual');
+  const autoBtn   = document.getElementById('btn-step-auto');
+  manualBtn.disabled = true;
+  autoBtn.disabled   = true;
+
+  let result;
+  try {
+    if (mode === 'auto') {
+      const r = await fetch(`${API}/agent/step`, { method: 'POST' });
+      if (!r.ok) throw new Error(await r.text());
+      result = await r.json();
+    } else {
+      const intent   = document.getElementById('sel-intent').value;
+      const decision = document.getElementById('sel-decision').value;
+      const response = document.getElementById('txt-response').value.trim();
+      if (!response) { toast('Please enter a response text.', 'info'); return; }
+
+      const r = await fetch(`${API}/step`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent, decision, response }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      result = await r.json();
+    }
+
+    appState.lastResult = result;
+    appState.currentObs = result.observation;
+    appState.done = result.done;
+
+    // Render chat with updated conversation
+    const toolRes = result.info?.tool_result || null;
+    renderChat(result.observation.conversation, appState._toolLogs || []);
+    if (toolRes && toolRes.tool) {
+      appendToolLog(toolRes);
+    }
+    updateEpisodeState(result.reward, result.done);
+    updateRewardPanel(result);
+
+    if (result.done) {
+      setStepButtons(false);
+      toast('Episode complete! Press Reset to start a new one.', 'info');
+    }
+  } catch (e) {
+    toast(`Step failed: ${e.message}`, 'err');
+  } finally {
+    if (!appState.done) {
+      manualBtn.disabled = false;
+      autoBtn.disabled   = false;
+    }
+  }
+}
+
+// ----------------------------------------------------------------
+// BENCHMARK
+// ----------------------------------------------------------------
+async function doBenchmark() {
+  const limit = parseInt(document.getElementById('bench-limit').value) || 30;
+  document.getElementById('btn-benchmark').disabled = true;
+  document.getElementById('bench-spinner').style.display = 'flex';
+  document.getElementById('bench-stats').style.display = 'none';
+  document.getElementById('bench-table-wrap').style.display = 'none';
+  document.getElementById('bench-filter-row').style.display = 'none';
+  document.getElementById('bench-empty').style.display = 'none';
+
+  try {
+    const r = await fetch(`${API}/benchmark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_tasks: limit }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    appState.benchResults = data.results;
+    renderBenchmark(data);
+    toast(`Benchmark complete! ${data.results.length} tasks evaluated.`, 'ok');
+  } catch (e) {
+    toast(`Benchmark failed: ${e.message}`, 'err');
+    document.getElementById('bench-empty').style.display = 'flex';
+  } finally {
+    document.getElementById('btn-benchmark').disabled = false;
+    document.getElementById('bench-spinner').style.display = 'none';
+  }
+}
+
+// ----------------------------------------------------------------
+// RENDER HELPERS
+// ----------------------------------------------------------------
+function renderScenarioHeader(obs) {
+  const conv = obs.conversation || [];
+  const userMsg = conv.find(m => (m.role || m.Role) === 'user');
+  const query = userMsg ? (userMsg.content || userMsg.Content) : '—';
+
+  document.getElementById('query-text').textContent = `"${query}"`;
+  document.getElementById('query-text').style.color = 'var(--text)';
+  document.getElementById('query-text').style.fontWeight = '600';
+
+  const ctx = obs.context || {};
+  const emotion = obs.emotion || 'neutral';
+  const metaRow = document.getElementById('meta-row');
+  metaRow.innerHTML = `
+    <span class="badge badge-${emotion}">
+      ${emotion === 'angry' ? '😠' : emotion === 'confused' ? '😕' : '😐'} ${emotion}
+    </span>
+    ${ctx.order_id ? `<span class="badge badge-info">📦 ${ctx.order_id}</span>` : ''}
+    ${ctx.order_status ? `<span class="badge badge-muted">Status: ${ctx.order_status}</span>` : ''}
+  `;
+}
+
+function renderChat(conversation, _toolLogs) {
+  const area = document.getElementById('chat-area');
+  if (!conversation || conversation.length === 0) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">💬</div><div class="empty-text">No messages yet.</div></div>`;
+    return;
+  }
+  area.innerHTML = '';
+  conversation.forEach(msg => {
+    const role    = (msg.role || msg.Role || '').toLowerCase();
+    const content = msg.content || msg.Content || '';
+    const div = document.createElement('div');
+    div.className = `chat-bubble ${role}`;
+    div.innerHTML = `<div class="bubble-role">${role}</div>${escHtml(content)}`;
+    area.appendChild(div);
+  });
+  area.scrollTop = area.scrollHeight;
+}
+
+function appendToolLog(toolRes) {
+  const container = document.getElementById('tool-log-container');
+  // Clear "no tools" placeholder
+  if (container.querySelector('div[style]')) container.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'tool-log';
+  div.innerHTML = `
+    <div class="tool-label">⚙️ ${toolRes.tool || 'tool'}</div>
+    <div>Order: ${toolRes.order_id || '—'} | Status: ${toolRes.status || '—'}</div>
+    <div style="color:var(--text);margin-top:2px">${toolRes.message || ''}</div>
+  `;
+  container.appendChild(div);
+}
+
+function clearToolLog() {
+  document.getElementById('tool-log-container').innerHTML =
+    '<div style="color:var(--muted);font-size:12px">No tools called yet.</div>';
+}
+
+function updateEpisodeState(reward, done) {
+  document.getElementById('ep-turn').textContent = reward !== null ? appState.lastResult?.info?.turn ?? '—' : '0';
+  document.getElementById('ep-reward').textContent = reward !== null ? reward.toFixed(4) : '—';
+  const statusEl = document.getElementById('ep-status');
+  if (done) {
+    statusEl.innerHTML = '<span class="badge badge-angry">Done</span>';
+  } else if (appState.episodeActive) {
+    statusEl.innerHTML = '<span class="badge badge-info">Running</span>';
+  } else {
+    statusEl.textContent = '—';
+  }
+}
+
+function setStepButtons(enabled) {
+  document.getElementById('btn-step-manual').disabled = !enabled;
+  document.getElementById('btn-step-auto').disabled   = !enabled;
+}
+
+function clearReward() {
+  document.getElementById('reward-display').textContent = '—';
+  document.getElementById('reward-breakdown').innerHTML = `
+    <div style="color:var(--muted);font-size:12px;text-align:center">
+      Complete a step in the Sandbox to see the breakdown.
+    </div>`;
+  document.getElementById('inspector-box').innerHTML = '<span style="color:var(--muted)">No data yet.</span>';
+}
+
+// ----------------------------------------------------------------
+// REWARD PANEL
+// ----------------------------------------------------------------
+function updateRewardPanel(result) {
+  // Switch to reward tab if on sandbox
+  const reward = result.reward || 0;
+  document.getElementById('reward-display').textContent = reward.toFixed(4);
+
+  // Estimate component breakdown based on task grader logic
+  const task = result.info?.task || {};
+  const obs  = result.observation;
+  // We re-derive scores client-side for display (approximation)
+  // The server computes the real score; we show proportional breakdown bars.
+  const totalScore = reward;
+
+  // Bars: Intent 25%, Decision 35%, Quality 25%, Emotion 10%, Efficiency 5%
+  // Distribute the total score proportionally across components (visual only)
+  const weights = [
+    { name: 'Intent',     weight: 0.25, cls: 'rw-intent',    max: 0.25 },
+    { name: 'Decision',   weight: 0.35, cls: 'rw-decision',  max: 0.35 },
+    { name: 'Quality',    weight: 0.25, cls: 'rw-quality',   max: 0.25 },
+    { name: 'Emotion',    weight: 0.10, cls: 'rw-emotion',   max: 0.10 },
+    { name: 'Efficiency', weight: 0.05, cls: 'rw-efficiency',max: 0.05 },
+  ];
+
+  // Simple proportional split of total reward across weights
+  const breakdown = document.getElementById('reward-breakdown');
+  breakdown.innerHTML = '';
+  weights.forEach(w => {
+    const portion = Math.min(w.max, totalScore * w.weight);
+    const pct = (portion / w.max) * 100;
+    const row = document.createElement('div');
+    row.className = 'rw-row';
+    row.innerHTML = `
+      <div class="rw-name">${w.name} (${Math.round(w.weight*100)}%)</div>
+      <div class="rw-bar-bg">
+        <div class="rw-bar-fill ${w.cls}" style="width:${pct.toFixed(1)}%"></div>
+      </div>
+      <div class="rw-score">${portion.toFixed(3)}</div>
+    `;
+    breakdown.appendChild(row);
+  });
+
+  // Update inspector
+  renderInspector(result);
+}
+
+// ----------------------------------------------------------------
+// INSPECTOR
+// ----------------------------------------------------------------
+const YAML_STUB = `name: customer-support-env
+version: 2.0
+
+endpoints:
+  reset: /reset
+  step: /step
+  state: /state
+  tasks: /tasks
+  agent_step: /agent/step
+  benchmark: /benchmark
+
+agent:
+  heuristic: enabled
+  openai: auto (checks OPENAI_API_KEY)
+
+grader:
+  intent:    25%
+  decision:  35%
+  quality:   25%
+  emotion:   10%
+  efficiency: 5%
+
+max_turns: 3`;
+
+function renderInspector(result) {
+  if (!result) return;
+  const tab = appState.inspectorTab;
+  let content;
+  if (tab === 'observation') {
+    content = JSON.stringify(result.observation, null, 2);
+  } else if (tab === 'stepresult') {
+    content = JSON.stringify(result, null, 2);
+  } else {
+    content = YAML_STUB;
+  }
+  document.getElementById('inspector-box').textContent = content;
+}
+
+// ----------------------------------------------------------------
+// BENCHMARK RENDER
+// ----------------------------------------------------------------
+function renderBenchmark(data) {
+  const s = data.summary;
+  document.getElementById('stat-avg').textContent   = s.average_reward.toFixed(3);
+  document.getElementById('stat-pass').textContent  = (s.pass_rate * 100).toFixed(0) + '%';
+  document.getElementById('stat-total').textContent = s.total;
+  document.getElementById('stat-max').textContent   = s.max_reward.toFixed(3);
+  document.getElementById('stat-min').textContent   = s.min_reward.toFixed(3);
+
+  document.getElementById('bench-stats').style.display        = 'flex';
+  document.getElementById('bench-filter-row').style.display   = 'flex';
+  document.getElementById('bench-table-wrap').style.display   = 'block';
+
+  renderBenchTable(data.results);
+}
+
+function renderBenchTable(results) {
+  const emoFilter    = document.getElementById('bench-filter-emotion').value;
+  const searchFilter = (document.getElementById('bench-search').value || '').toLowerCase();
+
+  const filtered = results.filter(r => {
+    if (emoFilter && r.emotion !== emoFilter) return false;
+    if (searchFilter && !r.query.toLowerCase().includes(searchFilter)) return false;
+    return true;
+  });
+
+  document.getElementById('bench-count').textContent = `${filtered.length} of ${results.length} tasks`;
+
+  const tbody = document.getElementById('bench-tbody');
+  tbody.innerHTML = '';
+  filtered.forEach(r => {
+    const scoreClass = r.reward >= 0.7 ? 'score-high' : r.reward >= 0.4 ? 'score-mid' : 'score-low';
+    const emoBadge   = r.emotion === 'angry' ? 'badge-angry' : r.emotion === 'confused' ? 'badge-confused' : 'badge-neutral';
+    const tools = (r.tool_calls || []).filter(Boolean).join(', ') || '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:var(--muted)">${r.index + 1}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.query)}">${escHtml(r.query)}</td>
+      <td><span class="badge ${emoBadge}" style="font-size:10px">${r.emotion}</span></td>
+      <td style="color:var(--muted);font-size:11px">${r.intent}</td>
+      <td style="color:var(--muted);font-size:11px">${r.decision}</td>
+      <td style="font-size:11px;font-family:var(--mono)">${escHtml(tools)}</td>
+      <td style="text-align:center">${r.turns}</td>
+      <td><span class="score-pill ${scoreClass}">${r.reward.toFixed(3)}</span></td>
+      <td style="text-align:center">${r.pass ? '✅' : '❌'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function filterTable() {
+  renderBenchTable(appState.benchResults);
+}
+
+// ----------------------------------------------------------------
+// TABS
+// ----------------------------------------------------------------
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`${btn.dataset.tab}-panel`).classList.add('active');
+  });
+});
+
+document.querySelectorAll('.action-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.action-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('manual-form').style.display = btn.dataset.atab === 'manual' ? 'flex' : 'none';
+    document.getElementById('auto-form').style.display   = btn.dataset.atab === 'auto'   ? 'block' : 'none';
+    document.getElementById('manual-form').style.flexDirection = 'column';
+  });
+});
+
+document.querySelectorAll('.inspector-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.inspector-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    appState.inspectorTab = btn.dataset.itab;
+    if (appState.lastResult) renderInspector(appState.lastResult);
+    else if (btn.dataset.itab === 'state') {
+      document.getElementById('inspector-box').textContent = YAML_STUB;
+    }
+  });
+});
+
+// Benchmark emotion filter
+document.getElementById('bench-filter-emotion').addEventListener('change', () => {
+  if (appState.benchResults.length) renderBenchTable(appState.benchResults);
+});
+
+// ----------------------------------------------------------------
+// UTILS
+// ----------------------------------------------------------------
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function toast(msg, type = 'info') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ----------------------------------------------------------------
+// INIT
+// ----------------------------------------------------------------
+checkServer();
+</script>
+</body>
+</html>
