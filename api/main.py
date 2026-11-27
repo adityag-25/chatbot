@@ -101,7 +101,7 @@ def reset(body: ResetRequest = ResetRequest()):
 def step(body: StepRequest):
     """Take one agent action and receive the next observation + reward."""
     global _last_step_result
-    if env.state is None:
+    if env.state is None
         raise HTTPException(status_code=400, detail="Call /reset first.")
 
     action = Action(intent=body.intent, decision=body.decision, response=body.response)
@@ -120,7 +120,7 @@ def state():
     if env.state is None:
         raise HTTPException(status_code=400, detail="Call /reset first.")
     return {
-        "state": env.state_fn(),
+        "state: env.state_fn(),
         "last_step_result": _last_step_result,
         "turn": env.turn,
         "done": env.done,
